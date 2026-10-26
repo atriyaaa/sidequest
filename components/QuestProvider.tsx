@@ -4,126 +4,298 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+
+import { useAuth } from "./AuthProvider";
 import { getQuest } from "../data/quests";
+
 import {
-  createEmptyProgress,
-  loadProgress,
-  saveProgress,
-} from "../lib/storage";
+  applyProgressAction,
+  loadCloudProgress,
+  type ProgressAction,
+} from "../lib/cloud-progress";
+
 import type { Progress } from "../types/quest";
 
 type QuestContextValue = {
   progress: Progress;
-  toggleSaved: (id: string) => void;
-  startQuest: (id: string) => void;
-  completeQuest: (id: string) => void;
-  saveMemory: (id: string, text: string) => void;
+  loading: boolean;
+  saving: boolean;
+  toggleSaved: (id: string) => Promise<boolean>;
+  startQuest: (id: string) => Promise<boolean>;
+  completeQuest: (id: string) => Promise<boolean>;
+  saveMemory: (id: string, text: string) => Promise<boolean>;
+};
+
+type LoadedProgress = {
+  userId: string;
+  progress: Progress;
+};
+
+type SyncNotice = {
+  userId: string;
+  text: string;
+};
+
+const EMPTY_PROGRESS: Progress = {
+  saved: [],
+  started: [],
+  completed: [],
+  memories: {},
 };
 
 const QuestContext = createContext<QuestContextValue | null>(null);
 
-export function QuestProvider({ children }: { children: ReactNode }) {
-  const [progress, setProgress] = useState<Progress>(
-    createEmptyProgress,
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+
+  return "Please check your connection and try again.";
+}
+
+export function QuestProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const { user, loading: authLoading } = useAuth();
+  const userId = user?.id;
+
+  const [loaded, setLoaded] = useState<LoadedProgress | null>(null);
+  const [notice, setNotice] = useState<SyncNotice | null>(null);
+
+  const [savingUserId, setSavingUserId] = useState<string | null>(
+    null,
   );
-  const [ready, setReady] = useState(false);
-  const [storageError, setStorageError] = useState(false);
+
+  const [reloadCount, setReloadCount] = useState(0);
+
+  // Prevent repeated clicks from sending overlapping saves.
+  const mutationRunning = useRef(false);
+
+  // Ignore responses from an earlier account or loading request.
+  const generation = useRef(0);
 
   useEffect(() => {
-    setProgress(loadProgress());
-    setReady(true);
-  }, []);
+    const requestGeneration = ++generation.current;
 
-  useEffect(() => {
-    if (!ready) return;
+    if (authLoading || !userId) {
+      return;
+    }
 
-    setStorageError(!saveProgress(progress));
-  }, [progress, ready]);
+    const accountId = userId;
+    let active = true;
 
-  function toggleSaved(id: string) {
-    if (!getQuest(id)) return;
+    async function load() {
+      try {
+        const progress = await loadCloudProgress(accountId);
 
-    setProgress((current) => ({
-      ...current,
-      saved: current.saved.includes(id)
-        ? current.saved.filter((savedId) => savedId !== id)
-        : [...current.saved, id],
-    }));
-  }
+        if (
+          !active ||
+          generation.current !== requestGeneration
+        ) {
+          return;
+        }
 
-  function startQuest(id: string) {
-    if (!getQuest(id)) return;
+        setLoaded({
+          userId: accountId,
+          progress,
+        });
 
-    setProgress((current) => {
-      if (current.started.includes(id)) return current;
+        setNotice(null);
+      } catch (error) {
+        if (
+          !active ||
+          generation.current !== requestGeneration
+        ) {
+          return;
+        }
 
-      return {
-        ...current,
-        started: [...current.started, id],
-      };
-    });
-  }
+        setNotice({
+          userId: accountId,
+          text:
+            "Couldn’t load your progress: " +
+            errorMessage(error),
+        });
+      }
+    }
 
-  function completeQuest(id: string) {
-    if (!getQuest(id)) return;
+    void load();
 
-    setProgress((current) => {
-      if (
-        !current.started.includes(id) ||
-        current.completed.includes(id)
-      ) {
-        return current;
+    return () => {
+      active = false;
+    };
+  }, [userId, authLoading, reloadCount]);
+
+  const hasLoaded = Boolean(
+    userId && loaded?.userId === userId,
+  );
+
+  // Never display another account's loaded progress.
+  const progress =
+    hasLoaded && loaded
+      ? loaded.progress
+      : EMPTY_PROGRESS;
+
+  const loading =
+    authLoading || Boolean(userId && !hasLoaded);
+
+  const saving = Boolean(
+    userId && savingUserId === userId,
+  );
+
+  // Check that notice exists before reading its text.
+  const currentNotice =
+    notice && notice.userId === userId
+      ? notice.text
+      : "";
+
+  async function runAction(
+    action: ProgressAction,
+  ): Promise<boolean> {
+    if (!userId || authLoading) {
+      return false;
+    }
+
+    if (!hasLoaded) {
+      setNotice({
+        userId,
+        text:
+          "Your progress hasn’t loaded yet. " +
+          "Please retry loading first.",
+      });
+
+      return false;
+    }
+
+    if (mutationRunning.current) {
+      return false;
+    }
+
+    if (!getQuest(action.questId)) {
+      setNotice({
+        userId,
+        text: "We couldn’t find that quest.",
+      });
+
+      return false;
+    }
+
+    const requestGeneration = generation.current;
+
+    mutationRunning.current = true;
+    setSavingUserId(userId);
+    setNotice(null);
+
+    try {
+      await applyProgressAction(userId, action);
+
+      // Read back the confirmed database state.
+      const updated = await loadCloudProgress(userId);
+
+      if (generation.current !== requestGeneration) {
+        return false;
       }
 
-      return {
-        ...current,
-        completed: [...current.completed, id],
-      };
-    });
-  }
+      setLoaded({
+        userId,
+        progress: updated,
+      });
 
-  function saveMemory(id: string, text: string) {
-    const trimmed = text.trim().slice(0, 2000);
-    if (!getQuest(id) || !trimmed) return;
+      return true;
+    } catch (error) {
+      if (generation.current === requestGeneration) {
+        setNotice({
+          userId,
+          text:
+            "Couldn’t finish syncing. " +
+            "Reload your progress before retrying: " +
+            errorMessage(error),
+        });
+      }
 
-    setProgress((current) => {
-      if (!current.completed.includes(id)) return current;
-
-      return {
-        ...current,
-        memories: {
-          ...current.memories,
-          [id]: {
-            questId: id,
-            text: trimmed,
-            updatedAt: new Date().toISOString(),
-          },
-        },
-      };
-    });
+      return false;
+    } finally {
+      mutationRunning.current = false;
+      setSavingUserId(null);
+    }
   }
 
   return (
     <QuestContext.Provider
       value={{
         progress,
-        toggleSaved,
-        startQuest,
-        completeQuest,
-        saveMemory,
+        loading,
+        saving,
+
+        toggleSaved: (id) =>
+          runAction({
+            type: "toggle-saved",
+            questId: id,
+          }),
+
+        startQuest: (id) =>
+          runAction({
+            type: "start",
+            questId: id,
+          }),
+
+        completeQuest: (id) =>
+          runAction({
+            type: "complete",
+            questId: id,
+          }),
+
+        saveMemory: (id, text) =>
+          runAction({
+            type: "memory",
+            questId: id,
+            text,
+          }),
       }}
     >
-      {storageError && (
-        <p className="storage-warning" role="alert">
-            This browser couldn’t save your progress. Changes may
-            be lost when you close this page.
-        </p>
-        )}
+      {userId && (
+        <>
+          {currentNotice ? (
+            <div className="sync-notice" role="alert">
+              <span>{currentNotice}</span>
 
-        {children}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() =>
+                  setReloadCount((count) => count + 1)
+                }
+              >
+                Reload progress
+              </button>
+            </div>
+          ) : loading ? (
+            <div className="sync-notice" role="status">
+              Loading your adventures…
+            </div>
+          ) : saving ? (
+            <div className="sync-notice" role="status">
+              Saving your adventure…
+            </div>
+          ) : null}
+        </>
+      )}
+
+      {children}
     </QuestContext.Provider>
   );
 }
@@ -132,7 +304,9 @@ export function useQuests() {
   const context = useContext(QuestContext);
 
   if (!context) {
-    throw new Error("useQuests must be used inside QuestProvider");
+    throw new Error(
+      "useQuests must be used inside QuestProvider",
+    );
   }
 
   return context;

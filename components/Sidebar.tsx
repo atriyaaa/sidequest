@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "./AuthProvider";
 
 export const navigation = [
   { href: "/", label: "Home", symbol: "⌂" },
@@ -13,11 +14,13 @@ export const navigation = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user, loading } = useAuth();
 
   return (
     <aside className="sidebar">
-      <Link href="/" className="brand">
-        <span aria-hidden="true">✳</span> sidequest.
+      <Link href="/" className="brand" aria-label="SideQuest home">
+        <span aria-hidden="true">✳</span>
+        sidequest.
       </Link>
 
       <p className="eyebrow sidebar-caption">
@@ -42,10 +45,34 @@ export default function Sidebar() {
         ))}
       </nav>
 
+      <Link href="/profile" className="account-link">
+        <span aria-hidden="true">☺</span>
+
+        <div>
+          <strong>
+            {loading ? "Checking account…" : "Your account"}
+          </strong>
+
+          <small>
+            {loading ? "One little moment" : user?.email}
+          </small>
+        </div>
+      </Link>
+
       <div className="sidebar-note">
-        <span className="little-flower" aria-hidden="true">✳</span>
-        <p>Small steps.<br />Good stories.</p>
-        <small>You don’t have to go far to find a little wonder.</small>
+        <span className="little-flower" aria-hidden="true">
+          ✳
+        </span>
+
+        <p>
+          Small steps.
+          <br />
+          Good stories.
+        </p>
+
+        <small>
+          You don’t have to go far to find a little wonder.
+        </small>
       </div>
     </aside>
   );
