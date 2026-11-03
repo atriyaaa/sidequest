@@ -8,6 +8,7 @@ import { getQuest } from "../../../data/quests";
 import { useQuests } from "../../../components/QuestProvider";
 import QuestArtwork from "../../../components/QuestArtwork";
 import PhotoMemory from "../../../components/PhotoMemory";
+import QuestLocation from "../../../components/QuestLocation";
 
 function MemoryForm({
   questId,
@@ -26,7 +27,9 @@ function MemoryForm({
   const displayedText = edited ? text : initialText;
   const busy = loading || saving || submitting;
 
-  async function handleSave(event: FormEvent<HTMLFormElement>) {
+  async function handleSave(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
     if (busy) return;
@@ -160,6 +163,12 @@ export default function QuestPage() {
                 : "Ready when you are"}
         </span>
       </div>
+
+      <QuestLocation
+        key={quest.id}
+        questId={quest.id}
+        editable
+      />
 
       <section className="mission">
         <h2>Your little mission</h2>

@@ -13,6 +13,7 @@ import type { City } from "../../types/city";
 
 export default function ExplorePage() {
   const [search, setSearch] = useState("");
+
   const [category, setCategory] =
     useState<Category | "All">("All");
 
@@ -61,10 +62,10 @@ export default function ExplorePage() {
 
       {selectedCity && (
         <p className="gentle-note">
-          You’ve chosen <strong>{selectedCity.name}</strong>.
-          These are general adventure ideas, not local venue
-          listings. Connecting adventures to your destination
-          is our next step.
+          Planning a little adventure in{" "}
+          <strong>{selectedCity.name}</strong>?
+          Open a quest to save this destination with it.
+          These are general activities, not local venue listings.
         </p>
       )}
 
@@ -82,7 +83,11 @@ export default function ExplorePage() {
       {filteredQuests.length > 0 ? (
         <div className="quest-grid">
           {filteredQuests.map((quest) => (
-            <QuestCard key={quest.id} quest={quest} />
+            <QuestCard
+              key={quest.id}
+              quest={quest}
+              city={selectedCity}
+            />
           ))}
         </div>
       ) : (

@@ -1,15 +1,22 @@
 "use client";
 
 import Link from "next/link";
+
 import type { Quest } from "../types/quest";
+import type { City } from "../types/city";
+
 import { useQuests } from "./QuestProvider";
 import QuestArtwork from "./QuestArtwork";
 
+type Props = {
+  quest: Quest;
+  city?: City | null;
+};
+
 export default function QuestCard({
   quest,
-}: {
-  quest: Quest;
-}) {
+  city,
+}: Props) {
   const {
     progress,
     toggleSaved,
@@ -20,6 +27,15 @@ export default function QuestCard({
   const saved = progress.saved.includes(quest.id);
   const completed = progress.completed.includes(quest.id);
   const started = progress.started.includes(quest.id);
+
+  const questHref = city
+    ? {
+        pathname: `/quests/${quest.id}`,
+        query: {
+          city: JSON.stringify(city),
+        },
+      }
+    : `/quests/${quest.id}`;
 
   return (
     <article className="quest-card">
@@ -46,12 +62,14 @@ export default function QuestCard({
         <p className="eyebrow">{quest.category}</p>
 
         <h3>
-          <Link href={`/quests/${quest.id}`}>
+          <Link href={questHref}>
             {quest.title}
           </Link>
         </h3>
 
-        <p className="muted">{quest.description}</p>
+        <p className="muted">
+          {quest.description}
+        </p>
 
         <div className="quest-meta">
           <span>{quest.minutes} min</span>

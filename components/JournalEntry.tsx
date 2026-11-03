@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+
 import type { Memory, Quest } from "../types/quest";
+
 import PhotoMemory from "./PhotoMemory";
 import QuestArtwork from "./QuestArtwork";
+import QuestLocation from "./QuestLocation";
 
 type Props = {
   quest: Quest;
@@ -41,13 +44,15 @@ export default function JournalEntry({
 
         <h2>{quest.title}</h2>
 
+        <QuestLocation questId={quest.id} />
+
         <p>{memory.text}</p>
 
         <Link
           className="text-link"
           href={`/quests/${quest.id}`}
         >
-          Edit memory & photo ↗
+          Edit memory, photo & location ↗
         </Link>
       </div>
     </article>
