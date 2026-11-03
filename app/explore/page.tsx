@@ -5,6 +5,7 @@ import { useState } from "react";
 import CitySearch from "../../components/CitySearch";
 import QuestCard from "../../components/QuestCard";
 import QuestFilters from "../../components/QuestFilters";
+import SurpriseMe from "../../components/SurpriseMe";
 
 import { quests } from "../../data/quests";
 
@@ -74,6 +75,11 @@ export default function ExplorePage() {
         category={category}
         onSearchChange={setSearch}
         onCategoryChange={setCategory}
+      />
+
+      <SurpriseMe
+        quests={filteredQuests}
+        city={selectedCity}
       />
 
       <p className="result-count" role="status">
